@@ -13,7 +13,7 @@ TODO:
     - Replace random with numpy
     - Replace math with numpy
 """
-
+import os
 import sys
 import csv
 import math
@@ -22,9 +22,75 @@ import numpy as np
 import itertools
 import sciris as sc
 
+# from opentelemetry import trace
+# from opentelemetry import metrics
+# from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+# from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+# from opentelemetry.sdk.metrics._internal.export import ConsoleMetricExporter
+# from opentelemetry.sdk.trace import TracerProvider
+# from opentelemetry.sdk.resources import Resource
+# from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+# from opentelemetry.sdk.metrics import MeterProvider
+# from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+# from prometheus_client import start_http_server
+#
+# # Start Prometheus client
+# start_http_server(port=8000)
+#
+# # Initialize tracer provider
+# resource = Resource(attributes={"service.name": "disease-model"})
+# otlp_span_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+# trace_provider = TracerProvider(resource=resource)
+# trace_provider.add_span_processor(SimpleSpanProcessor(otlp_span_exporter))
+# trace.set_tracer_provider(trace_provider)
+# tracer = trace.get_tracer(__name__)
+#
+# # Start Prometheus exporter on port 8000
+# console_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+# #reader = PrometheusMetricReader()
+# otlp_metric_exporter = OTLPMetricExporter(endpoint="http://localhost:4317", insecure=True)
+# metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter, export_interval_millis=50)
+# provider = MeterProvider(resource=resource, metric_readers=[metric_reader, console_reader])
+# metrics.set_meter_provider(provider)
+#
+# # Creates a meter from the global meter provider
+# meter = metrics.get_meter(__name__)
+
+
+# Define a counter to track infections by strain
+# infection__without_vaccination_counter = meter.create_counter(
+#     name="infection__without_vaccination",
+#     description="Total infections by rotavirus strain",
+#     unit="1",
+# )
+#
+# # Track infection durations with a histogram
+# infection_duration_histogram = meter.create_histogram(
+#     name="infection_duration",
+#     description="Duration of infections by strain",
+#     unit="seconds",
+# )
+#
+# infections_with_vaccination = meter.create_counter(
+#     name="infections_with_vaccination",
+#     description="Total infections by rotavirus strain",
+#     unit="1",
+# )
+#
+#
+# # Decorator for tracing model functions
+# def trace_model(func):
+#     def wrapper(*args, **kwargs):
+#         with tracer.start_as_current_span(func.__name__):
+#             result = func(*args, **kwargs)
+#             return result
+#     return wrapper
+
+
 # Define age bins and labels
-age_bins = [2/12, 4/12, 6/12, 12/12, 24/12, 36/12, 48/12, 60/12, 100]
-age_distribution = [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.84]                  # needs to be changed to fit the site-specific population
+age_bins = [2 / 12, 4 / 12, 6 / 12, 12 / 12, 24 / 12, 36 / 12, 48 / 12, 60 / 12, 100]
+age_distribution = [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+                    0.84]  # needs to be changed to fit the site-specific population
 age_labels = ['0-2', '2-4', '4-6', '6-12', '12-24', '24-36', '36-48', '48-60', '60+']
 
 
@@ -33,6 +99,7 @@ class HostPop:
     """
     A class to hold all the hosts
     """
+
     def __init__(self, N, sim):
         self.hosts = [Host(i, sim) for i in range(N)]
         self.bdays = [h.bday for h in self.hosts]
@@ -68,11 +135,12 @@ class Host(sc.prettyobj):
     """
     A rotavirus host
     """
+
     def __init__(self, host_id, sim):
         self.sim = sim
         self.id = host_id
         self.bday = self.t - self.get_random_age()
-        self.immunity = {} # set of strains the host is immune to
+        self.immunity = {}  # set of strains the host is immune to
         self.vaccine = None
         self.infecting_pathogen = []
         self.prior_infections = 0
@@ -97,7 +165,7 @@ class Host(sc.prettyobj):
         random_age_bin = np.random.choice(list(range(len(age_bins))), p=age_distribution)
         # generate a random age in the bin
         if random_age_bin > 0:
-            min_age = age_bins[random_age_bin-1]
+            min_age = age_bins[random_age_bin - 1]
         else:
             min_age = 0
         max_age = age_bins[random_age_bin]
@@ -145,14 +213,14 @@ class Host(sc.prettyobj):
         all_antigenic_combinations = [i for i in itertools.product(*seg_combinations) if i not in parantal_strains]
         all_nonantigenic_combinations = [j.strain[self.numAgSegments:] for j in self.infecting_pathogen]
         all_strains = set([(i[0] + i[1]) for i in itertools.product(all_antigenic_combinations, all_nonantigenic_combinations)])
-        all_pathogens = [Pathogen(self.sim, True, self.t, host = self, strain=tuple(i)) for i in all_strains]
+        all_pathogens = [Pathogen(self.sim, True, self.t, host=self, strain=tuple(i)) for i in all_strains]
 
         return all_pathogens
 
     def isInfected(self):
         return len(self.infecting_pathogen) != 0
 
-    def recover(self,strain_counts):
+    def recover(self, strain_counts):
         # We will use the pathogen creation time to count the number of infections
         creation_times = set()
         for path in self.infecting_pathogen:
@@ -301,8 +369,10 @@ class Host(sc.prettyobj):
     def record_infection(self, new_p):
         if len(self.prior_vaccinations) != 0:
             vaccine_strain = self.prior_vaccinations[-1]
+            # infections_with_vaccination.add(1, {"strain": new_p.strain, "vaccine_strain": vaccine_strain, "id": self.id, "prior_vaccinations": len(self.prior_vaccinations)})
             self.infections_with_vaccination.append((new_p, new_p.match(vaccine_strain)))
         else:
+            # infection__without_vaccination_counter.add(1, {"strain": new_p.strain, "id": self.id})
             self.infections_without_vaccination.append(new_p)
 
     def infect_with_pathogen(self, pathogen_in, strain_counts):
@@ -320,7 +390,7 @@ class Host(sc.prettyobj):
         else:
             severe = False
 
-        new_p = Pathogen(self.sim, False, self.t, host = self, strain=pathogen_in.strain, is_severe=severe)
+        new_p = Pathogen(self.sim, False, self.t, host=self, strain=pathogen_in.strain, is_severe=severe)
         self.infecting_pathogen.append(new_p)
         self.record_infection(new_p)
 
@@ -330,7 +400,6 @@ class Host(sc.prettyobj):
 
     def infect_with_reassortant(self, reassortant_virus):
         self.infecting_pathogen.append(reassortant_virus)
-
 
 
 ### Pathogen classes
@@ -406,7 +475,7 @@ class Pathogen(object):
             raise NotImplementedError(f"Invalid fitness_hypothesis: {fitness_hypothesis}")
 
     def get_strain_name(self):
-        G,P,A,B = [str(self.strain[i]) for i in range(4)]
+        G, P, A, B = [str(self.strain[i]) for i in range(4)]
         return f'G{G}P{P}A{A}B{B}'
 
     def __str__(self):
@@ -420,11 +489,11 @@ class RotaABM:
     """
 
     def __init__(self,
-            N = 100_000,
-            timelimit = 40,
-            verbose = None,
-            **kwargs,
-        ):
+                 N=100_000,
+                 timelimit=40,
+                 verbose=None,
+                 **kwargs,
+                 ):
         """
         Create the simulation.
 
@@ -434,25 +503,25 @@ class RotaABM:
         """
         # Define the default parameters
         args = sc.objdict(
-            immunity_hypothesis = 1,
-            reassortment_rate = 0.1,
-            fitness_hypothesis = 1,
-            vaccine_hypothesis = 1,
-            waning_hypothesis = 1,
-            initial_immunity = 0,
-            ve_i_to_ve_s_ratio = 0.5,
-            experiment_number = 1,
+            immunity_hypothesis=1,
+            reassortment_rate=0.1,
+            fitness_hypothesis=1,
+            vaccine_hypothesis=1,
+            waning_hypothesis=1,
+            initial_immunity=0,
+            ve_i_to_ve_s_ratio=0.5,
+            experiment_number=1,
         )
 
         # Update with any keyword arguments
-        for k,v in kwargs.items():
+        for k, v in kwargs.items():
             if k in args:
                 args[k] = v
             else:
                 KeyError(k)
 
         # Loop over command line input arguments, if provided
-        for i,arg in enumerate(sys.argv[1:]):
+        for i, arg in enumerate(sys.argv[1:]):
             args[i] = arg
 
         if verbose is not False:
@@ -465,7 +534,7 @@ class RotaABM:
         self.fitness_hypothesis = int(args[2])
         self.vaccine_hypothesis = int(args[3])
         self.waning_hypothesis = int(args[4])
-        self.initial_immunity = int(args[5]) # 0 = no immunity
+        self.initial_immunity = int(args[5])  # 0 = no immunity
         self.ve_i_to_ve_s_ratio = float(args[6])
         self.experiment_number = int(args[7])
         self.verbose = verbose
@@ -475,7 +544,7 @@ class RotaABM:
         np.random.seed(self.experiment_number)
 
         # Set filenames
-        name_suffix =  '%r_%r_%r_%r_%r_%r_%r_%r' % (self.immunity_hypothesis, self.reassortment_rate, self.fitness_hypothesis, self.vaccine_hypothesis, self.waning_hypothesis, self.initial_immunity, self.ve_i_to_ve_s_ratio, self.experiment_number)
+        name_suffix = '%r_%r_%r_%r_%r_%r_%r_%r' % ( self.immunity_hypothesis, self.reassortment_rate, self.fitness_hypothesis, self.vaccine_hypothesis, self.waning_hypothesis, self.initial_immunity, self.ve_i_to_ve_s_ratio, self.experiment_number)
         self.files = sc.objdict()
         self.files.outputfilename = './results/rota_strain_count_%s.csv' % (name_suffix)
         self.files.vaccinations_outputfilename = './results/rota_vaccinecount_%s.csv' % (name_suffix)
@@ -488,41 +557,41 @@ class RotaABM:
         # Set other parameters
         self.N = N  # initial population size
         self.timelimit = timelimit  # simulation years
-        self.mu = 1.0/70.0     # average life span is 70 years
-        self.gamma = 365/7  # 1/average infectious period (1/gamma =7 days)
+        self.mu = 1.0 / 70.0  # average life span is 70 years
+        self.gamma = 365 / 7  # 1/average infectious period (1/gamma =7 days)
         if self.waning_hypothesis == 1:
-            omega = 365/273  # duration of immunity by infection= 39 weeks
+            omega = 365 / 273  # duration of immunity by infection= 39 weeks
         elif self.waning_hypothesis == 2:
-            omega = 365/50
+            omega = 365 / 50
         elif self.waning_hypothesis == 3:
-            omega = 365/100
+            omega = 365 / 100
         self.omega = omega
-        self.birth_rate = self.mu * 2 # Adjust birth rate to be more in line with Bangladesh
+        self.birth_rate = self.mu * 2  # Adjust birth rate to be more in line with Bangladesh
 
-        self.contact_rate = 365/1
+        self.contact_rate = 365 / 1
         self.reassortmentRate_GP = self.reassortment_rate
 
-        self.vaccination_time =  20
+        self.vaccination_time = 20
 
         # Efficacy of the vaccine first dose
         self.vaccine_efficacy_d1 = {
             PathogenMatch.HOMOTYPIC: 0.6,
             PathogenMatch.PARTIAL_HETERO: 0.45,
-            PathogenMatch.COMPLETE_HETERO:0.15,
+            PathogenMatch.COMPLETE_HETERO: 0.15,
         }
         # Efficacy of the vaccine second dose
         self.vaccine_efficacy_d2 = {
             PathogenMatch.HOMOTYPIC: 0.8,
             PathogenMatch.PARTIAL_HETERO: 0.65,
-            PathogenMatch.COMPLETE_HETERO:0.35,
+            PathogenMatch.COMPLETE_HETERO: 0.35,
         }
 
-        self.vaccination_single_dose_waning_rate = 365/273 #365/1273
-        self.vaccination_double_dose_waning_rate = 365/546 #365/2600
+        self.vaccination_single_dose_waning_rate = 365 / 273  # 365/1273
+        self.vaccination_double_dose_waning_rate = 365 / 546  # 365/2600
         # vaccination_waning_lower_bound = 20 * 7 / 365.0
 
         # Tau leap parametes
-        self.tau = 1/365.0
+        self.tau = 1 / 365.0
 
         # if initialization starts with a proportion of immune agents:
         self.num_initial_immune = 10000
@@ -536,7 +605,7 @@ class RotaABM:
         return
 
     @staticmethod
-    def get_probability_of_severe(sim, pathogen_in, vaccine, immunity_count): # TEMP: refactor and include above
+    def get_probability_of_severe(sim, pathogen_in, vaccine, immunity_count):  # TEMP: refactor and include above
         if immunity_count >= 3:
             severity_probability = 0.18
         elif immunity_count == 2:
@@ -556,13 +625,15 @@ class RotaABM:
                 ve_s = sim.vaccine_efficacy_s_d2[pathogen_strain_type]
             else:
                 raise NotImplementedError(f"Unsupported vaccine dose: {vaccine[2]}")
-            return severity_probability * (1-ve_s)
+            return severity_probability * (1 - ve_s)
         else:
             return severity_probability
 
     # Initialize all the output files
     def initialize_files(self, strain_count):
         files = self.files
+        # check the directory for outputfilename path and create the directory if it does not exist
+        os.makedirs(os.path.dirname(files.outputfilename), exist_ok=True)
         with open(files.outputfilename, "w+", newline='') as outputfile:
             write = csv.writer(outputfile)
             write.writerow(["time"] + list(strain_count.keys()) + ["reassortment_count"])  # header for the csv file
@@ -581,8 +652,8 @@ class RotaABM:
         for outfile in [files.vaccine_efficacy_output_filename, files.sample_vaccine_efficacy_output_filename]:
             with open(outfile, "w+", newline='') as outputfile:
                 write = csv.writer(outputfile)
-                write.writerow(["CollectionTime", "Vaccinated", "Unvaccinated", "VaccinatedInfected", "VaccinatedSevere", "UnVaccinatedInfected", "UnVaccinatedSevere",
-                                "VaccinatedHomotypic", "VaccinatedHomotypicSevere", "VaccinatedpartialHetero", "VaccinatedpartialHeteroSevere", "VaccinatedFullHetero", "VaccinatedFullHeteroSevere"])
+                write.writerow( ["CollectionTime", "Vaccinated", "Unvaccinated", "VaccinatedInfected", "VaccinatedSevere", "UnVaccinatedInfected", "UnVaccinatedSevere",
+                     "VaccinatedHomotypic", "VaccinatedHomotypicSevere", "VaccinatedpartialHetero", "VaccinatedpartialHeteroSevere", "VaccinatedFullHetero", "VaccinatedFullHeteroSevere"])
 
         with open(files.age_outputfilename, "w+", newline='') as outputfile:
             write = csv.writer(outputfile)
@@ -591,245 +662,249 @@ class RotaABM:
     def get_fitness(self):
         """ Get the fitness based on the fitness hypothesis and the two strains """
         fitness_hypothesis = self.sim.fitness_hypothesis
+        return fitness_hypothesis
 
     def getFitness(self):
         key = (self.strain[0], self.strain[1])
 
+        fitness_hypothesis = self.get_fitness()
+
         if fitness_hypothesis == 1:
-                return 1
+            return 1
 
         elif fitness_hypothesis == 2:
-            	default = 0.90
-            	mapping = {
-            		(1, 1): 0.93,
-            		(2, 2): 0.93,
-            		(3, 3): 0.93,
-            		(4, 4): 0.93,
-            	}
-            	return mapping.get(key, default)
+            default = 0.90
+            mapping = {
+                (1, 1): 0.93,
+                (2, 2): 0.93,
+                (3, 3): 0.93,
+                (4, 4): 0.93,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 3:
-                default = 0.87
-                mapping = {
-                	(1, 1): 0.93,
-                	(2, 2): 0.93,
-                	(3, 3): 0.90,
-                	(4, 4): 0.90,
-                }
-                return mapping.get(key, default)
+            default = 0.87
+            mapping = {
+                (1, 1): 0.93,
+                (2, 2): 0.93,
+                (3, 3): 0.90,
+                (4, 4): 0.90,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 4:
-                default = 1
-                mapping = {
-                	(1, 1): 1,
-                	(2, 2): 0.2,
-                }
-                return mapping.get(key, default)
+            default = 1
+            mapping = {
+                (1, 1): 1,
+                (2, 2): 0.2,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 5:
-                default = 0.2
-                mapping = {
-                	(1, 1): 1,
-                	(2, 1): 0.5,
-                	(1, 3): 0.5,
-                }
-                return mapping.get(key, default)
+            default = 0.2
+            mapping = {
+                (1, 1): 1,
+                (2, 1): 0.5,
+                (1, 3): 0.5,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 6:
-                default = 0.05
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.2,
-                	(3, 8): 0.4,
-                	(4, 8): 0.5,
-                }
-                return mapping.get(key, default)
+            default = 0.05
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.2,
+                (3, 8): 0.4,
+                (4, 8): 0.5,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 7:
-                default = 0.05
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.3,
-                	(3, 8): 0.7,
-                	(4, 8): 0.6,
-                }
-                return mapping.get(key, default)
+            default = 0.05
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.3,
+                (3, 8): 0.7,
+                (4, 8): 0.6,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 8:
-                default = 0.05
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.4,
-                	(3, 8): 0.9,
-                	(4, 8): 0.8,
-                }
-                return mapping.get(key, default)
+            default = 0.05
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.4,
+                (3, 8): 0.9,
+                (4, 8): 0.8,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 9:
-                default = 0.2
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.6,
-                	(3, 8): 0.9,
-                	(4, 8): 0.9,
-                }
-                return mapping.get(key, default)
+            default = 0.2
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.6,
+                (3, 8): 0.9,
+                (4, 8): 0.9,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 10:
-                default = 0.4
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.6,
-                	(3, 8): 0.9,
-                	(4, 8): 0.9,
-                }
-                return mapping.get(key, default)
+            default = 0.4
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.6,
+                (3, 8): 0.9,
+                (4, 8): 0.9,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 11:
-                default = 0.5
-                mapping = {
-                	(1, 8): 0.98,
-                	(2, 4): 0.7,
-                	(3, 8): 0.8,
-                	(4, 8): 0.8,
-                }
-                return mapping.get(key, default)
+            default = 0.5
+            mapping = {
+                (1, 8): 0.98,
+                (2, 4): 0.7,
+                (3, 8): 0.8,
+                (4, 8): 0.8,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 12:
-                default=0.5
-                mapping = {
-                	(1, 8): 0.98,
-                	(2, 4): 0.7,
-                	(3, 8): 0.9,
-                	(4, 8): 0.9,
-                }
-                return mapping.get(key, default)
+            default = 0.5
+            mapping = {
+                (1, 8): 0.98,
+                (2, 4): 0.7,
+                (3, 8): 0.9,
+                (4, 8): 0.9,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 13:
-            	default = 0.7
-            	mapping = {
-            		(1, 8): 0.98,
-            		(2, 4): 0.8,
-            		(3, 8): 0.9,
-            		(4, 8): 0.9,
-            	}
-            	return mapping.get(key, default)
+            default = 0.7
+            mapping = {
+                (1, 8): 0.98,
+                (2, 4): 0.8,
+                (3, 8): 0.9,
+                (4, 8): 0.9,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 14:
-                default = 0.05
-                mapping = {
-                	(1, 8): 0.98,
-                	(2, 4): 0.4,
-                	(3, 8): 0.7,
-                	(12, 8): 0.75,
-                	(9, 6): 0.58,
-                	(11, 8): 0.2,
-                }
-                return mapping.get(key, default)
+            default = 0.05
+            mapping = {
+                (1, 8): 0.98,
+                (2, 4): 0.4,
+                (3, 8): 0.7,
+                (12, 8): 0.75,
+                (9, 6): 0.58,
+                (11, 8): 0.2,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 15:
-                default = 0.4
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.7,
-                	(3, 8): 0.93,
-                	(4, 8): 0.93,
-                	(9, 8): 0.95,
-                	(12, 8): 0.94,
-                	(9, 6): 0.3,
-                	(11, 8): 0.35,
-                }
-                return mapping.get(key, default)
+            default = 0.4
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.7,
+                (3, 8): 0.93,
+                (4, 8): 0.93,
+                (9, 8): 0.95,
+                (12, 8): 0.94,
+                (9, 6): 0.3,
+                (11, 8): 0.35,
+            }
+            return mapping.get(key, default)
 
 
         elif fitness_hypothesis == 16:
-                default = 0.4
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.7,
-                	(3, 8): 0.85,
-                	(4, 8): 0.88,
-                	(9, 8): 0.95,
-                	(12, 8): 0.93,
-                	(9, 6): 0.85,
-                	(12, 6): 0.90,
-                	(9, 4): 0.90,
-                	(1, 6): 0.6,
-                	(2, 8): 0.6,
-                	(2, 6): 0.6,
-                }
-                return mapping.get(key, default)
+            default = 0.4
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.7,
+                (3, 8): 0.85,
+                (4, 8): 0.88,
+                (9, 8): 0.95,
+                (12, 8): 0.93,
+                (9, 6): 0.85,
+                (12, 6): 0.90,
+                (9, 4): 0.90,
+                (1, 6): 0.6,
+                (2, 8): 0.6,
+                (2, 6): 0.6,
+            }
+            return mapping.get(key, default)
 
         elif fitness_hypothesis == 17:
-                default = 0.7
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.85,
-                	(3, 8): 0.85,
-                	(4, 8): 0.88,
-                	(9, 8): 0.95,
-                	(12, 8): 0.93,
-                	(9, 6): 0.83,
-                	(12, 6): 0.90,
-                	(9, 4): 0.90,
-                	(1, 6): 0.8,
-                	(2, 8): 0.8,
-                	(2, 6): 0.8,
-                }
-                return mapping.get(key, default)
+            default = 0.7
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.85,
+                (3, 8): 0.85,
+                (4, 8): 0.88,
+                (9, 8): 0.95,
+                (12, 8): 0.93,
+                (9, 6): 0.83,
+                (12, 6): 0.90,
+                (9, 4): 0.90,
+                (1, 6): 0.8,
+                (2, 8): 0.8,
+                (2, 6): 0.8,
+            }
+            return mapping.get(key, default)
 
-            # below fitness hypo. 18 was used in the analysis for the high baseline diversity setting in the report
+        # below fitness hypo. 18 was used in the analysis for the high baseline diversity setting in the report
         elif fitness_hypothesis == 18:
-                default = 0.65
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.92,
-                	(3, 8): 0.79,
-                	(4, 8): 0.81,
-                	(9, 8): 0.95,
-                	(12, 8): 0.89,
-                	(9, 6): 0.80,
-                	(12, 6): 0.86,
-                	(9, 4): 0.83,
-                	(1, 6): 0.75,
-                	(2, 8): 0.75,
-                	(2, 6): 0.75,
-                }
-                return mapping.get(key, default)
+            default = 0.65
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.92,
+                (3, 8): 0.79,
+                (4, 8): 0.81,
+                (9, 8): 0.95,
+                (12, 8): 0.89,
+                (9, 6): 0.80,
+                (12, 6): 0.86,
+                (9, 4): 0.83,
+                (1, 6): 0.75,
+                (2, 8): 0.75,
+                (2, 6): 0.75,
+            }
+            return mapping.get(key, default)
 
-            # below fitness hypo 19 was used for the low baseline diversity setting analysis in the report
+        # below fitness hypo 19 was used for the low baseline diversity setting analysis in the report
         elif fitness_hypothesis == 19:
-                default = 0.4
-                mapping = {
-                	(1, 8): 1,
-                	(2, 4): 0.5,
-                	(3, 8): 0.55,
-                	(4, 8): 0.55,
-                	(9, 8): 0.6,
-                }
-                return mapping.get(key, default)
+            default = 0.4
+            mapping = {
+                (1, 8): 1,
+                (2, 4): 0.5,
+                (3, 8): 0.55,
+                (4, 8): 0.55,
+                (9, 8): 0.6,
+            }
+            return mapping.get(key, default)
 
         else:
-                print("Invalid fitness_hypothesis: ", fitness_hypothesis)
-                exit(-1)
+            print("Invalid fitness_hypothesis: ", fitness_hypothesis)
+            exit(-1)
 
     ############# tau-Function to calculate event counts ############################
     def get_event_counts(self, N, I, R, tau, RR_GP, single_dose_count, double_dose_count):
-        births = np.random.poisson(size=1, lam=tau*N*self.birth_rate)[0]
-        deaths = np.random.poisson(size=1, lam=tau*N*self.mu)[0]
-        recoveries = np.random.poisson(size=1, lam=tau*self.gamma*I)[0]
-        contacts = np.random.poisson(size=1, lam=tau*self.contact_rate*I)[0]
-        wanings = np.random.poisson(size=1, lam=tau*self.omega*R)[0]
-        reassortments = np.random.poisson(size=1, lam=tau*RR_GP*I)[0]
-        vaccination_wanings_one_dose = np.random.poisson(size=1, lam=tau*self.vaccination_single_dose_waning_rate*single_dose_count)[0]
-        vaccination_wanings_two_dose = np.random.poisson(size=1, lam=tau*self.vaccination_double_dose_waning_rate*double_dose_count)[0]
-        return (births, deaths, recoveries, contacts, wanings, reassortments, vaccination_wanings_one_dose, vaccination_wanings_two_dose)
+        births = np.random.poisson(size=1, lam=tau * N * self.birth_rate)[0]
+        deaths = np.random.poisson(size=1, lam=tau * N * self.mu)[0]
+        recoveries = np.random.poisson(size=1, lam=tau * self.gamma * I)[0]
+        contacts = np.random.poisson(size=1, lam=tau * self.contact_rate * I)[0]
+        wanings = np.random.poisson(size=1, lam=tau * self.omega * R)[0]
+        reassortments = np.random.poisson(size=1, lam=tau * RR_GP * I)[0]
+        vaccination_wanings_one_dose = np.random.poisson(size=1, lam=tau * self.vaccination_single_dose_waning_rate * single_dose_count)[0]
+        vaccination_wanings_two_dose = np.random.poisson(size=1, lam=tau * self.vaccination_double_dose_waning_rate * double_dose_count)[0]
+        return (births, deaths, recoveries, contacts, wanings, reassortments, vaccination_wanings_one_dose,
+                vaccination_wanings_two_dose)
 
     @staticmethod
     def coInfected_contacts(host1, host2, strain_counts):
         h2existing_pathogens = list(host2.infecting_pathogen)
         randomnumber = rnd.random()
-        if randomnumber < 0.02:       # giving all the possible strains
+        if randomnumber < 0.02:  # giving all the possible strains
             for path in host1.infecting_pathogen:
                 if host2.can_variant_infect_host(path.strain, h2existing_pathogens):
                     host2.infect_with_pathogen(path, strain_counts)
@@ -875,11 +950,12 @@ class RotaABM:
 
             h2_previously_infected = h2.isInfected()
 
-            if len(h1.infecting_pathogen)==1:
+            if len(h1.infecting_pathogen) == 1:
+
                 if h2.can_variant_infect_host(h1.infecting_pathogen[0].strain, h2.infecting_pathogen):
                     h2.infect_with_pathogen(h1.infecting_pathogen[0], strain_count)
             else:
-                self.coInfected_contacts(h1,h2,strain_count)
+                self.coInfected_contacts(h1, h2, strain_count)
 
             # in this case h2 was not infected before but is infected now
             if not h2_previously_infected and h2.isInfected():
@@ -910,7 +986,7 @@ class RotaABM:
         return
 
     def recovery_event(self, num_recovered, infected_pop, strain_count):
-        weights=np.array([x.get_oldest_current_infection() for x in infected_pop])
+        weights = np.array([x.get_oldest_current_infection() for x in infected_pop])
         # If there is no one with an infection older than 0 return without recovery
         if (sum(weights) == 0):
             return
@@ -921,7 +997,7 @@ class RotaABM:
         recovering_hosts = np.random.choice(infected_pop, p=weights, size=num_recovered, replace=False)
         for host in recovering_hosts:
             if not host.is_immune_flag:
-                self.immunity_counts +=1
+                self.immunity_counts += 1
             host.recover(strain_count)
             infected_pop.remove(host)
 
@@ -931,9 +1007,9 @@ class RotaABM:
         for i in infected_pop:
             if len(i.infecting_pathogen) >= 2:
                 coinfectedhosts.append(i)
-        rnd.shuffle(coinfectedhosts) # TODO: maybe replace this
+        rnd.shuffle(coinfectedhosts)  # TODO: maybe replace this
 
-        for i in range(min(len(coinfectedhosts),reassortment_count)):
+        for i in range(min(len(coinfectedhosts), reassortment_count)):
             parentalstrains = [path.strain for path in coinfectedhosts[i].infecting_pathogen]
             possible_reassortants = [path for path in coinfectedhosts[i].compute_combinations() if path not in parentalstrains]
             for path in possible_reassortants:
@@ -947,9 +1023,9 @@ class RotaABM:
         order = np.argsort(oldest)
 
         # For the selcted hosts set the immunity to be None
-        for i in order[:wanings]:#range(min(len(hosts_with_immunity), wanings)):
+        for i in order[:wanings]:  # range(min(len(hosts_with_immunity), wanings)):
             h = h_immune[i]
-            h.immunity =  {}
+            h.immunity = {}
             h.is_immune_flag = False
             h.oldest_infection = np.nan
             h.prior_infections = 0
@@ -962,7 +1038,7 @@ class RotaABM:
         # For the selcted hosts set the immunity to be None
         for i in range(min(len(single_dose_pop), wanings)):
             h = single_dose_pop[i]
-            h.vaccinations =  None
+            h.vaccinations = None
 
     @staticmethod
     def waning_vaccinations_second_dose(second_dose_pop, wanings):
@@ -970,7 +1046,7 @@ class RotaABM:
         # For the selcted hosts set the immunity to be None
         for i in range(min(len(second_dose_pop), wanings)):
             h = second_dose_pop[i]
-            h.vaccinations =  None
+            h.vaccinations = None
 
     def birth_events(self, birth_count):
         for _ in range(birth_count):
@@ -978,7 +1054,7 @@ class RotaABM:
             new_host = Host(self.pop_id, sim=self)
             new_host.bday = self.t
             self.host_pop.append(new_host)
-            if self.vaccine_hypothesis !=0 and self.done_vaccinated:
+            if self.vaccine_hypothesis != 0 and self.done_vaccinated:
                 if rnd.random() < self.vaccine_first_dose_rate:
                     self.to_be_vaccinated_pop.append(new_host)
 
@@ -988,16 +1064,16 @@ class RotaABM:
 
     @staticmethod
     def solve_quadratic(a, b, c):
-        discriminant = b**2 - 4*a*c
+        discriminant = b ** 2 - 4 * a * c
         if discriminant >= 0:
-            root1 = (-b + discriminant**0.5) / (2*a)
-            root2 = (-b - discriminant**0.5) / (2*a)
+            root1 = (-b + discriminant ** 0.5) / (2 * a)
+            root2 = (-b - discriminant ** 0.5) / (2 * a)
             return tuple(sorted([root1, root2]))
         else:
             return "No real roots"
 
     def breakdown_vaccine_efficacy(self, ve, x):
-        (r1, r2) = self.solve_quadratic(x, -(1+x), ve)
+        (r1, r2) = self.solve_quadratic(x, -(1 + x), ve)
         if self.verbose: print(r1, r2)
         if r1 >= 0 and r1 <= 1:
             ve_s = r1
@@ -1008,13 +1084,12 @@ class RotaABM:
         ve_i = x * ve_s
         return (ve_i, ve_s)
 
-    def collect_and_write_data(self, output_filename, vaccine_output_filename, vaccine_efficacy_output_filename, sample=False, sample_size=1000):
+    def collect_data(self, sample=False, sample_size=1000):
         """
         Collects data from the host population and writes it to a CSV file.
         If sample is True, it collects data from a random sample of the population.
 
         Args:
-        - output_filename: Name of the file to write the data.
         - sample: Boolean indicating whether to collect data from a sample or the entire population.
         - sample_size: Size of the sample to collect data from if sample is True.
         """
@@ -1053,21 +1128,25 @@ class RotaABM:
                 for strain in strain_str:
                     collected_data.append((h.id, strain[0], self.t, h.get_age_category(), strain[1], strain[2], len(self.host_pop)))
 
+        self._collected_results = sc.objdict()
+        self._collected_results.collected_data = collected_data
+        self._collected_results.collected_vaccination_data = collected_vaccination_data
+
         # Only collect the vaccine efficacy data if we have vaccinated the hosts
         if self.done_vaccinated:
-            num_vaccinated = len(vaccinated_hosts)
-            num_unvaccinated = len(unvaccinated_hosts)
-            num_vaccinated_infected = 0
-            num_unvaccinated_infected = 0
-            num_vaccinated_infected_severe = 0
-            num_unvaccinated_infected_severe = 0
-            num_full_heterotypic = [0, 0]
-            num_partial_heterotypic = [0, 0]
-            num_homotypic = [0, 0]
+            self._collected_results.num_vaccinated = len(vaccinated_hosts)
+            self._collected_results.num_unvaccinated = len(unvaccinated_hosts)
+            self._collected_results.num_vaccinated_infected = 0
+            self._collected_results.num_unvaccinated_infected = 0
+            self._collected_results.num_vaccinated_infected_severe = 0
+            self._collected_results.num_unvaccinated_infected_severe = 0
+            self._collected_results.num_full_heterotypic = [0, 0]
+            self._collected_results.num_partial_heterotypic = [0, 0]
+            self._collected_results.num_homotypic = [0, 0]
 
             for vaccinated_host in vaccinated_hosts:
                 if len(vaccinated_host.infections_with_vaccination) > 0:
-                    num_vaccinated_infected += 1
+                    self._collected_results.num_vaccinated_infected += 1
                 was_there_a_severe_infection = False
                 was_there_a_full_heterotypic_infection = [False, False]
                 was_there_a_partial_heterotypic_infection = [False, False]
@@ -1085,44 +1164,53 @@ class RotaABM:
                         was_there_a_homotypic_infection[index] = True
 
                 if was_there_a_severe_infection:
-                    num_vaccinated_infected_severe += 1
+                    self._collected_results.num_vaccinated_infected_severe += 1
                 if was_there_a_full_heterotypic_infection[0]:
-                    num_full_heterotypic[0] += 1
+                    self._collected_results.num_full_heterotypic[0] += 1
                 if was_there_a_full_heterotypic_infection[1]:
-                    num_full_heterotypic[1] += 1
+                    self._collected_results.num_full_heterotypic[1] += 1
                 if was_there_a_partial_heterotypic_infection[0]:
-                    num_partial_heterotypic[0] += 1
+                    self._collected_results.num_partial_heterotypic[0] += 1
                 if was_there_a_partial_heterotypic_infection[1]:
-                    num_partial_heterotypic[1] += 1
+                    self._collected_results.num_partial_heterotypic[1] += 1
                 if was_there_a_homotypic_infection[0]:
-                    num_homotypic[0] += 1
+                    self._collected_results.num_homotypic[0] += 1
                 if was_there_a_homotypic_infection[1]:
-                    num_homotypic[1] += 1
+                    self._collected_results.num_homotypic[1] += 1
 
             for unvaccinated_host in unvaccinated_hosts:
                 if len(unvaccinated_host.infections_without_vaccination) > 0:
-                    num_unvaccinated_infected += 1
+                    self._collected_results.num_unvaccinated_infected += 1
                 was_there_a_severe_infection = False
                 for infecting_pathogen in unvaccinated_host.infections_without_vaccination:
                     if infecting_pathogen.is_severe:
                         was_there_a_severe_infection = True
                         break
                 if was_there_a_severe_infection:
-                    num_unvaccinated_infected_severe += 1
+                    self._collected_results.num_unvaccinated_infected_severe += 1
 
+    def write_data(self, output_filename, vaccine_output_filename, vaccine_efficacy_output_filename, sample=False):
+
+        if self.done_vaccinated:
             with open(vaccine_efficacy_output_filename, "a", newline='') as outputfile:
                 write = csv.writer(outputfile)
-                write.writerow([self.t, num_vaccinated, num_unvaccinated, num_vaccinated_infected, num_vaccinated_infected_severe, num_unvaccinated_infected, num_unvaccinated_infected_severe,
-                                num_homotypic[0], num_homotypic[1], num_partial_heterotypic[0], num_partial_heterotypic[1], num_full_heterotypic[0], num_full_heterotypic[1]])
+
+                write.writerow(
+                    [self.t, self._collected_results.num_vaccinated, self._collected_results.num_unvaccinated,
+                     self._collected_results.num_vaccinated_infected, self._collected_results.num_vaccinated_infected_severe,
+                     self._collected_results.num_unvaccinated_infected, self._collected_results.num_unvaccinated_infected_severe,
+                     self._collected_results.num_homotypic[0], self._collected_results.num_homotypic[1], self._collected_results.num_partial_heterotypic[0],
+                     self._collected_results.num_partial_heterotypic[1],
+                     self._collected_results.num_full_heterotypic[0], self._collected_results.num_full_heterotypic[1]])
 
         # Write collected data to the output file
         with open(output_filename, "a", newline='') as outputfile:
             writer = csv.writer(outputfile)
-            writer.writerows(collected_data)
+            writer.writerows(self._collected_results.collected_data)
         if not sample:
             with open(vaccine_output_filename, "a", newline='') as outputfile:
                 writer = csv.writer(outputfile)
-                writer.writerows(collected_vaccination_data)
+                writer.writerows(self._collected_results.collected_vaccination_data)
 
     def run(self):
         """
@@ -1193,34 +1281,34 @@ class RotaABM:
         numSegments = 4
         numNoneAgSegments = 2
         self.numAgSegments = numSegments - numNoneAgSegments
-        #segmentVariants = [[i for i in range(1, 3)], [i for i in range(1, 3)], [i for i in range(1, 2)], [i for i in range(1, 2)]]     ## creating variats for the segments
-        segmentVariants = [[1,2,3,4,9,11,12], [8,4,6], [i for i in range(1, 2)], [i for i in range(1, 2)]]
+        # segmentVariants = [[i for i in range(1, 3)], [i for i in range(1, 3)], [i for i in range(1, 2)], [i for i in range(1, 2)]]     ## creating variats for the segments
+        segmentVariants = [[1, 2, 3, 4, 9, 11, 12], [8, 4, 6], [i for i in range(1, 2)], [i for i in range(1, 2)]]
         # segmentVariants for the Low baseline diversity setting
-        #segmentVariants = [[1,2,3,4,9], [8,4], [i for i in range(1, 2)], [i for i in range(1, 2)]]
+        # segmentVariants = [[1,2,3,4,9], [8,4], [i for i in range(1, 2)], [i for i in range(1, 2)]]
         segment_combinations = [tuple(i) for i in itertools.product(*segmentVariants)]  # getting all possible combinations from a list of list
         rnd.shuffle(segment_combinations)
         number_all_strains = len(segment_combinations)
         n_init_seg = 100
         initial_segment_combinations = {
-            (1,8,1,1) : n_init_seg,
-            (2,4,1,1) : n_init_seg,
-            (9,8,1,1) : n_init_seg,
-            (4,8,1,1) : n_init_seg,
-            (3,8,1,1) : n_init_seg,
-            (12,8,1,1): n_init_seg,
-            (12,6,1,1): n_init_seg,
-            (9,4,1,1) : n_init_seg,
-            (9,6,1,1) : n_init_seg,
-            (1,6,1,1) : n_init_seg,
-            (2,8,1,1) : n_init_seg,
-            (2,6,1,1) : n_init_seg,
-            (11,8,1,1): n_init_seg,
-            (11,6,1,1): n_init_seg,
-            (1,4,1,1) : n_init_seg,
-            (12,4,1,1): n_init_seg,
+            (1, 8, 1, 1): n_init_seg,
+            (2, 4, 1, 1): n_init_seg,
+            (9, 8, 1, 1): n_init_seg,
+            (4, 8, 1, 1): n_init_seg,
+            (3, 8, 1, 1): n_init_seg,
+            (12, 8, 1, 1): n_init_seg,
+            (12, 6, 1, 1): n_init_seg,
+            (9, 4, 1, 1): n_init_seg,
+            (9, 6, 1, 1): n_init_seg,
+            (1, 6, 1, 1): n_init_seg,
+            (2, 8, 1, 1): n_init_seg,
+            (2, 6, 1, 1): n_init_seg,
+            (11, 8, 1, 1): n_init_seg,
+            (11, 6, 1, 1): n_init_seg,
+            (1, 4, 1, 1): n_init_seg,
+            (12, 4, 1, 1): n_init_seg,
         }
         # initial strains for the Low baseline diversity setting
-        #initial_segment_combinations = {(1,8,1,1): 100, (2,4,1,1): 100} #, (9,8,1,1): 100} #, (4,8,1,1): 100}
+        # initial_segment_combinations = {(1,8,1,1): 100, (2,4,1,1): 100} #, (9,8,1,1): 100} #, (4,8,1,1): 100}
 
         # Track the number of immune hosts(immunity_counts) in the host population
         infected_pop = []
@@ -1265,7 +1353,7 @@ class RotaABM:
                 h = rnd.choice(host_pop)
                 if not h.isInfected():
                     infected_pop.append(h)
-                p = Pathogen(self, False, self.t, host = h, strain = initial_strain)
+                p = Pathogen(self, False, self.t, host=h, strain=initial_strain)
                 pathogens_pop.append(p)
                 h.infecting_pathogen.append(p)
                 strain_count[p.strain] += 1
@@ -1306,8 +1394,8 @@ class RotaABM:
             vaccine_dose_2_wanings=0,
         )
 
-        self.T = sc.timer() # To track the time it takes to run the simulation
-        while self.t<self.timelimit:
+        self.T = sc.timer()  # To track the time it takes to run the simulation
+        while self.t < self.timelimit:
             if self.tau_steps % 10 == 0:
                 if self.verbose is not False: print(f"Year: {self.t:n}; step: {self.tau_steps}; hosts: {len(host_pop)}; elapsed: {self.T.total:n} s")
                 if self.verbose: print(self.strain_count)
@@ -1335,7 +1423,7 @@ class RotaABM:
                         double_dose_hosts.append(h)
 
             # Get the number of events in a single tau step
-            events = self.get_event_counts(len(host_pop), len(infected_pop), self.immunity_counts, self.tau, self.reassortmentRate_GP, len(single_dose_hosts), len(double_dose_hosts))
+            events = self.get_event_counts(len(host_pop), len(infected_pop), self.immunity_counts, self.tau,self.reassortmentRate_GP, len(single_dose_hosts), len(double_dose_hosts))
             births, deaths, recoveries, contacts, wanings, reassortments, vaccine_dose_1_wanings, vaccine_dose_2_wanings = events
             if self.verbose: print("t={}, births={}, deaths={}, recoveries={}, contacts={}, wanings={}, reassortments={}, waning_vaccine_d1={}, waning_vaccine_d2={}".format(self.t, births, deaths, recoveries, contacts, wanings, reassortments, vaccine_dose_1_wanings, vaccine_dose_2_wanings))
 
@@ -1344,7 +1432,7 @@ class RotaABM:
 
             # perform the events for the obtained counts
             self.birth_events(births)
-            self.reassortment_event(infected_pop, reassortments) # calling the function
+            self.reassortment_event(infected_pop, reassortments)  # calling the function
             self.contact_event(contacts, infected_pop, strain_count)
             self.death_event(deaths, infected_pop, strain_count)
             self.recovery_event(recoveries, infected_pop, strain_count)
@@ -1359,14 +1447,14 @@ class RotaABM:
 
             # Administer the first dose of the vaccine
             # Vaccination strain is the most prevalent strain in the population before the vaccination starts
-            if self.vaccine_hypothesis!=0 and (not self.done_vaccinated) and self.t >= self.vaccination_time:
+            if self.vaccine_hypothesis != 0 and (not self.done_vaccinated) and self.t >= self.vaccination_time:
                 # Sort the strains by the number of hosts infected with it in the past
                 # Pick the last one from the sorted list as the most prevalent strain
                 vaccinated_strain = sorted(list(total_strain_counts_vaccine.keys()), key=lambda x: total_strain_counts_vaccine[x])[-1]
                 # Select hosts under 6.5 weeks and over 4.55 weeks of age for vaccinate
                 child_host_pop = [h for h in host_pop if self.t - h.bday <= 0.13 and self.t - h.bday >= 0.09]
                 # Use the vaccination rate to determine the number of hosts to vaccinate
-                vaccination_count = int(len(child_host_pop)*self.vaccine_first_dose_rate)
+                vaccination_count = int(len(child_host_pop) * self.vaccine_first_dose_rate)
                 sample_population = rnd.sample(child_host_pop, vaccination_count)
                 if self.verbose: print("Vaccinating with strain: ", vaccinated_strain, vaccination_count)
                 if self.verbose: print("Number of people vaccinated: {} Number of people under 6 weeks: {}".format(len(sample_population), len(child_host_pop)))
@@ -1395,8 +1483,11 @@ class RotaABM:
 
             f = self.files
             if self.t >= self.last_data_colllected:
-                self.collect_and_write_data(f.sample_outputfilename, f.vaccinations_outputfilename, f.sample_vaccine_efficacy_output_filename, sample=True)
-                self.collect_and_write_data(f.infected_all_outputfilename, f.vaccinations_outputfilename, f.vaccine_efficacy_output_filename, sample=False)
+                self.collect_data(sample=True)
+                self.write_data(f.sample_outputfilename, f.vaccinations_outputfilename, f.sample_vaccine_efficacy_output_filename, sample=True)
+
+                self.collect_data(sample=False)
+                self.write_data(f.infected_all_outputfilename, f.vaccinations_outputfilename, f.vaccine_efficacy_output_filename)
                 self.last_data_colllected += self.data_collection_rate
 
             with open(f.outputfilename, "a", newline='') as outputfile:
@@ -1413,6 +1504,9 @@ class RotaABM:
 
 
 if __name__ == '__main__':
-    rota = RotaABM(N=100000, timelimit=10)
+    rota = RotaABM(N=5000, timelimit=5, verbose=True)
     events = rota.run()
+    from data_cleaning import clean_data
+    from pathlib import Path
 
+    clean_data(Path(__file__).parent.joinpath("results"))
